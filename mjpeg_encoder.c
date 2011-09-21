@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <assert.h>
+#include <xmmintrin.h>
 
 #include "mjpeg_encoder.h"
 
