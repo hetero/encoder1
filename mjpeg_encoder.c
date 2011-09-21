@@ -113,7 +113,7 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                     for(j = 0; j < jj; ++j)
                         for(i = 0; i < ii; ++i)
                         {
-                            float coeff = in_data[(y+j)*width+(x+i)] - 128.0f;
+                            int coeff = in_data[(y+j)*width+(x+i)] - 128;
                             dct += coeff * cos_table[i][u][j][v];
                         }
 
