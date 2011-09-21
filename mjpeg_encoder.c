@@ -31,6 +31,16 @@ static uint32_t bit_buffer_width = 0;
 extern int optind;
 extern char *optarg;
 
+/* cosines memorizing */
+static float cos_table[8][8];
+
+static void calc_cos_table() {
+    int a, b;
+    for (a = 0; a < 8; a++)
+        for (b = 0; b < 8; b++)
+            cos_table[a][b] = cos((2*a+1)*b*PI/16.0f);
+}
+
 /* Read YUV frames */
 static yuv_t* read_yuv(FILE *file)
 {
@@ -102,7 +112,7 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                         for(i = 0; i < ii; ++i)
                         {
                             float coeff = in_data[(y+j)*width+(x+i)] - 128.0f;
-                            dct += coeff * (float) (cos((2*i+1)*u*PI/16.0f) * cos((2*j+1)*v*PI/16.0f));
+                            dct += coeff * cos_table[i][u] * cos_table[j][v];
                         }
 
                     float a1 = !u ? ISQRT2 : 1.0f;
@@ -466,6 +476,8 @@ static void print_help()
 
 int main(int argc, char **argv)
 {
+    calc_cos_table();
+    
     int c;
     yuv_t *image;
 
