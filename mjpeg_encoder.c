@@ -152,12 +152,11 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                         {
                             for(i = 0; i < 8; i += 4)
                             {
-                                //__m128 coeff = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-                            	cos_4float = _mm_load_ps(cos_ptr);
+                                cos_4float = _mm_load_ps(cos_ptr);
                                 
                                 coeff = _mm_sub_ps(c[gr], M128);
                                 coeff = _mm_dp_ps(coeff, cos_4float, 0xF1);
-                                _mm_store_ss(table, coeff);
+                                _mm_store_ps(table, coeff);
                                 
                                 dct += table[0];
                                 
