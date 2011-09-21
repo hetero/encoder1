@@ -33,7 +33,8 @@ extern int optind;
 extern char *optarg;
 
 /* cosines memorizing */
-static float cos_table[4096];
+static float cos_table[4096] __attribute__((aligned(16)));
+static float table[4] __attribute__((aligned(16)));
 
 static void calc_cos_table() {
     int u, v, j, i;
@@ -92,7 +93,8 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
         uint32_t padheight, uint8_t *quantization)
 {
     int y,x,u,v,j,i;
-
+    const __m128 M128 = _mm_set1_ps(128);
+    
     /* Perform the DCT and quantization */
     for(y = 0; y < height; y += 8)
     {
@@ -120,12 +122,19 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                         
                         for(j = 0; j < 8; ++j)
                         {
-                            for(i = 0; i < 8; ++i)
+                            for(i = 0; i < 8; i += 4)
                             {
-                                float coeff = *in_ptr - 128;
-                                dct += coeff * (*cos_ptr);
-                                cos_ptr++;
-                                in_ptr++;
+                                __m128 coeff = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+                                __m128 cos_4float = _mm_load_ps(cos_ptr);
+                                
+                                coeff = _mm_sub_ps(coeff, M128);
+                                coeff = _mm_mul_ps(coeff, cos_4float);
+                                _mm_store_ps(table, coeff);
+                                
+                                dct += table[0] + table[1] + table[2] + table[3];
+                                
+                                cos_ptr += 4;
+                                in_ptr += 4;
                             }
                             in_ptr += width - 8;
                         }
