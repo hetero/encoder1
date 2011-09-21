@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -g -O3
+CFLAGS = -Wall -g -O3 -msse
 LDFLAGS = -lm
 
 all: mjpeg_encoder
