@@ -107,6 +107,32 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
             int ii = width - x;
             ii = MIN(ii, 8); // For the border-pixels, we might have a part of an 8x8 block
 
+            uint8_t *in_ptr = &in_data[y*width + x];
+			__m128 c[16];
+			c[0] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+			c[1] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			in_ptr += width;
+			c[2] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+			c[3] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			in_ptr += width;
+			c[4] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+			c[5] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			in_ptr += width;
+			c[6] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+			c[7] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			in_ptr += width;
+			c[8] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+			c[9] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			in_ptr += width;
+			c[10] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+			c[11] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			in_ptr += width;
+			c[12] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+			c[13] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			in_ptr += width;
+			c[14] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+			c[15] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+
             //Loop through all elements of the block
             for(u = 0; u < 8; ++u)
             {
@@ -119,25 +145,25 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                     if (ii == 8 && jj == 8) 
                     {
                         float *cos_ptr = &cos_table[512*u + 64*v];
-                        uint8_t *in_ptr = &in_data[y*width + x];
-                        
+                        __m128 cos_4float, coeff;
+                        int gr = 0;
+
                         for(j = 0; j < 8; ++j)
                         {
                             for(i = 0; i < 8; i += 4)
                             {
-                                __m128 coeff = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-                                __m128 cos_4float = _mm_load_ps(cos_ptr);
+                                //__m128 coeff = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+                            	cos_4float = _mm_load_ps(cos_ptr);
                                 
-                                coeff = _mm_sub_ps(coeff, M128);
-                                coeff = _mm_dp_ps(coeff, cos_4float, 1);
+                                coeff = _mm_sub_ps(c[gr], M128);
+                                coeff = _mm_dp_ps(coeff, cos_4float, 0xF1);
                                 _mm_store_ss(table, coeff);
                                 
                                 dct += table[0];
                                 
                                 cos_ptr += 4;
-                                in_ptr += 4;
+                                gr++;
                             }
-                            in_ptr += width - 8;
                         }
                     }
                     /* border case */
