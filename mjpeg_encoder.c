@@ -32,15 +32,15 @@ extern int optind;
 extern char *optarg;
 
 /* cosines memorizing */
-static float cos_table[8][8][8][8];
+static float cos_table[4096];
 
 static void calc_cos_table() {
-    int a, b, c, d;
-    for (a = 0; a < 8; a++)
-        for (b = 0; b < 8; b++)
-            for (c = 0; c < 8; c++)
-                for (d = 0; d < 8; d++)
-                    cos_table[a][b][c][d] = cos((2*a+1)*b*PI/16.0f) * cos((2*c+1)*d*PI/16.0f);
+    int u, v, j, i;
+    for (u = 0; u < 8; u++)
+        for (v = 0; v < 8; v++)
+            for (j = 0; j < 8; j++)
+                for (i = 0; i < 8; i++)
+                    cos_table[512*u + 64*v + 8*j + i] = cos((2*i+1)*u*PI/16.0f) * cos((2*j+1)*v*PI/16.0f);
 }
 
 /* Read YUV frames */
@@ -110,12 +110,34 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                 {
                     /* Compute the DCT */
                     float dct = 0;
-                    for(j = 0; j < jj; ++j)
-                        for(i = 0; i < ii; ++i)
+                    
+                    /* main case */
+                    if (ii == 8 && jj == 8) 
+                    {
+                        float *cos_ptr = &cos_table[512*u + 64*v];
+                        uint8_t *in_ptr = &in_data[y*width + x];
+                        
+                        for(j = 0; j < 8; ++j)
                         {
-                            int coeff = in_data[(y+j)*width+(x+i)] - 128;
-                            dct += coeff * cos_table[i][u][j][v];
+                            for(i = 0; i < 8; ++i)
+                            {
+                                float coeff = *in_ptr - 128;
+                                dct += coeff * (*cos_ptr);
+                                cos_ptr++;
+                                in_ptr++;
+                            }
+                            in_ptr += width - 8;
                         }
+                    }
+                    /* border case */
+                    else {
+                        for(j = 0; j < jj; ++j)
+                            for(i = 0; i < ii; ++i)
+                            {
+                                int coeff = in_data[(y+j)*width+(x+i)] - 128;
+                                dct += coeff * cos_table[512*u + 64*v + 8*j + i];
+                            }
+                    }
 
                     float a1 = !u ? ISQRT2 : 1.0f;
                     float a2 = !v ? ISQRT2 : 1.0f;
