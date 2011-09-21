@@ -110,28 +110,28 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
             uint8_t *in_ptr = &in_data[y*width + x];
 			__m128 c[16];
 			c[0] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[1] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			c[1] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 			in_ptr += width;
 			c[2] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[3] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			c[3] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 			in_ptr += width;
 			c[4] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[5] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			c[5] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 			in_ptr += width;
 			c[6] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[7] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			c[7] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 			in_ptr += width;
 			c[8] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[9] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			c[9] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 			in_ptr += width;
 			c[10] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[11] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			c[11] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 			in_ptr += width;
 			c[12] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[13] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			c[13] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 			in_ptr += width;
 			c[14] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[15] = _mm_cvtpu8_ps(*((__m64 *) in_ptr + 4));
+			c[15] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 
             //Loop through all elements of the block
             for(u = 0; u < 8; ++u)
