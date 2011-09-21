@@ -7,6 +7,7 @@
 #include <math.h>
 #include <assert.h>
 #include <xmmintrin.h>
+#include <smmintrin.h>
 
 #include "mjpeg_encoder.h"
 
@@ -128,10 +129,10 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                                 __m128 cos_4float = _mm_load_ps(cos_ptr);
                                 
                                 coeff = _mm_sub_ps(coeff, M128);
-                                coeff = _mm_mul_ps(coeff, cos_4float);
-                                _mm_store_ps(table, coeff);
+                                coeff = _mm_dp_ps(coeff, cos_4float, 0xf1);
+                                _mm_store_ss(table, coeff);
                                 
-                                dct += table[0] + table[1] + table[2] + table[3];
+                                dct += table[0];
                                 
                                 cos_ptr += 4;
                                 in_ptr += 4;

@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -Wall -g -O3 -msse
-LDFLAGS = -lm
+CFLAGS = -Wall -g -O3 -msse4.1
+LDFLAGS = -lm -lprofiler
 
 all: mjpeg_encoder
 
