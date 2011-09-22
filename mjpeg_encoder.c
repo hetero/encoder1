@@ -95,6 +95,7 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
 {
     int y,x,u,v,j,i;
     const __m128 M128 = _mm_set1_ps(128);
+    int16_t *out_ptr;
     
     /* Perform the DCT and quantization */
     for(y = 0; y < height; y += 8)
@@ -106,7 +107,8 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
         {
             int ii = width - x;
             ii = MIN(ii, 8); // For the border-pixels, we might have a part of an 8x8 block
-
+            out_ptr = &out_data[y * width + x];
+            
             uint8_t *in_ptr = &in_data[y*width + x];
 			__m128 c[16];
 			c[0] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
@@ -134,9 +136,9 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
 			c[15] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 
             //Loop through all elements of the block
-            for(u = 0; u < 8; ++u)
+            for(v = 0; v < 8; ++v)
             {
-                for(v = 0; v < 8; ++v)
+                for(u = 0; u < 8; ++u)
                 {
                     /* Compute the DCT */
                     float dct = 0;
@@ -182,8 +184,10 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                     dct *= a1*a2/4.0f;
 
                     /* Quantize */
-                    out_data[(y+v)*width+(x+u)] = (int16_t)(floor(0.5f + dct / (float)(quantization[v*8+u])));
+                    *out_ptr = (int16_t)(0.5f + dct / (quantization[v*8+u]));
+                    out_ptr++;
                 }
+                out_ptr += width - 8;
             }
         }
     }
