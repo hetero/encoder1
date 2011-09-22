@@ -91,7 +91,7 @@ static yuv_t* read_yuv(FILE *file)
 
 static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
         int16_t *out_data, uint32_t padwidth,
-        uint32_t padheight, uint8_t *quantization)
+        uint32_t padheight, float *quantization)
 {
     int y,x,u,v,j,i;
     const __m128 M128 = _mm_set1_ps(128);
@@ -498,9 +498,9 @@ static void encode(yuv_t *image)
     out->Vdct = malloc(vph*vpw*(sizeof(*out->Vdct)));
 
     /* DCT and Quantization */
-    dct_quantize(image->Y, width, height, out->Ydct, ypw, yph, yquanttbl);
-    dct_quantize(image->U, (width*UX/YX), (height*UY/YY), out->Udct, upw, uph, uquanttbl);
-    dct_quantize(image->V, (width*VX/YX), (height*VY/YY), out->Vdct, vpw, vph, vquanttbl);
+    dct_quantize(image->Y, width, height, out->Ydct, ypw, yph, Fyquanttbl);
+    dct_quantize(image->U, (width*UX/YX), (height*UY/YY), out->Udct, upw, uph, Fuquanttbl);
+    dct_quantize(image->V, (width*VX/YX), (height*VY/YY), out->Vdct, vpw, vph, Fvquanttbl);
 
     /* Write headers */
 
