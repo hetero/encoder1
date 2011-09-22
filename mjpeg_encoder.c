@@ -156,7 +156,7 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                                 
                                 coeff = _mm_sub_ps(c[gr], M128);
                                 coeff = _mm_dp_ps(coeff, cos_4float, 0xF1);
-                                _mm_store_ps(table, coeff);
+                                _mm_store_ss(table, coeff);
                                 
                                 dct += table[0];
                                 
