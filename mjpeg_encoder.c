@@ -33,16 +33,7 @@ extern int optind;
 extern char *optarg;
 
 /* cosines memorizing */
-static float cos_table[4096] __attribute__((aligned(16)));
-
-//static void calc_cos_table() {
-//    int u, v, j, i;
-//    for (u = 0; u < 8; u++)
-//        for (v = 0; v < 8; v++)
-//            for (j = 0; j < 8; j++)
-//                for (i = 0; i < 8; i++)
-//                    cos_table[512*u + 64*v + 8*j + i] = cos((2*i+1)*u*PI/16.0f) * cos((2*j+1)*v*PI/16.0f);
-//}
+static float cos_table[4096 * 3] __attribute__((aligned(16)));
 
 static void calc_cos_table() {
     int u, v, j, i;
@@ -50,18 +41,25 @@ static void calc_cos_table() {
 		for (u = 0; u < 8; u++)
 			for (v = 0; v < 8; v++)
 				for (j = 0; j < 8; j++)
-                    cos_table[512*i + 64*u + 8*v + j] = cos((2*i+1)*u*PI/16.0f) * cos((2*j+1)*v*PI/16.0f);
+				{
+//					float tmp_cos1 = cos((2*i+1)*v*PI/16.0f);
+//					float tmp_cos2 = cos((2*j+1)*u*PI/16.0f);
+//					float q1 = Fyquanttbl[v*8+u];
+//					float q2 = Fuquanttbl[v*8+u];
+//					float q3 = Fvquanttbl[v*8+u];
+//                    cos_table[512*i + 64*v + 8*u + j] = tmp_cos1  * tmp_cos2 * (1 / q1);
+//                    cos_table[4096 + 512*i + 64*v + 8*u + j] = tmp_cos1  * tmp_cos2 * (1 / q2);
+//                    cos_table[2 * 4096 + 64*v + 8*u + j] = tmp_cos1  * tmp_cos2 * (1 / q3);
+					cos_table[512*i + 64*v + 8*u + j] = cos((2*i+1)*v*PI/16.0f) * cos((2*j+1)*u*PI/16.0f);
+				}
 }
 
 /* Read YUV frames */
-static yuv_t* read_yuv(FILE *file)
+void read_yuv(FILE *file, yuv_t *image)
 {
     size_t len = 0;
-    yuv_t *image = malloc(sizeof(yuv_t));
-
 
     /* Read Y' */
-    image->Y = memalign(16, width*height);
     len += fread(image->Y, 1, width*height, file);
     if(ferror(file))
     {
@@ -70,7 +68,6 @@ static yuv_t* read_yuv(FILE *file)
     }
 
     /* Read U */
-    image->U = memalign(16, width*height);
     len += fread(image->U, 1, (width*height)/4, file);
     if(ferror(file))
     {
@@ -79,7 +76,6 @@ static yuv_t* read_yuv(FILE *file)
     }
 
     /* Read V */
-    image->V = memalign(16, width*height);
     len += fread(image->V, 1, (width*height)/4, file);
     if(ferror(file))
     {
@@ -90,17 +86,14 @@ static yuv_t* read_yuv(FILE *file)
     if(len != width*height*1.5)
     {
         printf("Reached end of file.\n");
-        return NULL;
     }
-
-    return image;
 }
 
 static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
         int16_t *out_data, uint32_t padwidth,
-        uint32_t padheight, float *quantization)
+        uint32_t padheight, float* quantization)
 {
-    int y,x,u,v,j,i;
+    int y,x,u,v,i;
     const __m128 f128_xmm0 = _mm_set1_ps(128);
     __m128 in_xmm1, cos_xmm2, in_xmm3, cos_xmm4;
     int16_t *out_ptr;
@@ -123,7 +116,9 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
             if (ii == 8 && jj == 8)
             {
             	for (i = 0; i < 64; ++i)
+            	{
             		tmp[i] = 0.0f;
+            	}
             	//Loop through all elements of the in block, vector by vector
             	for (i = 0; i < 8; ++i)
             	{
@@ -131,8 +126,8 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
 					in_xmm1 = _mm_sub_ps(in_xmm1, f128_xmm0);
 					in_xmm3 = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
 					in_xmm3 = _mm_sub_ps(in_xmm3, f128_xmm0);
-					// TODO przeorganizowac tablice cos
-					float *cos_ptr = &cos_table[512*i];
+//					float *cos_ptr = &cos_table[id_quant * 4096 + 512 * i];
+					float *cos_ptr = &cos_table[512 * i];
 					//Loop through all elements of the out block
 					for (v = 0; v < 8; ++v)
 					{
@@ -140,9 +135,6 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
 						{
 							cos_xmm2 = _mm_load_ps(cos_ptr + v * 64 + u * 8);
 							cos_xmm2 = _mm_dp_ps(in_xmm1, cos_xmm2, 0xF1);
-							//_mm_store_ss(table, cos_xmm2);
-//							// TODO trzeba wyzerowac tmp pierw!
-//							tmp[v * 8 + u] += table[0];
 							cos_xmm4 = _mm_load_ps(cos_ptr + v * 64 + u * 8 + 4);
 							cos_xmm4 = _mm_dp_ps(in_xmm3, cos_xmm4, 0xF1);
 							cos_xmm4 = _mm_add_ss(cos_xmm4, cos_xmm2);
@@ -160,12 +152,28 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
 						float a1 = !u ? ISQRT2 : 1.0f;
 						float a2 = !v ? ISQRT2 : 1.0f;
 						/* Scale according to normalizing function */
-						tmp[v * 8 + u] *= a1*a2/4.0f;
-						*out_ptr = (int16_t)(0.5f + tmp[v * 8 + u] / (quantization[v*8+u]));
+						tmp[v * 8 + u] *= a1*a2/(4.0f * quantization[v*8+u]);
+						*out_ptr = (int16_t)(0.5f + tmp[v * 8 + u]);
 						out_ptr++;
 					}
 					out_ptr += width - 8;
             	}
+//            	cos_xmm2 = _mm_set1_ps(0.5f);
+//            	float *pom = tmp, *pom2 = quantization;
+//            	for (v = 0; v < 8; ++v)
+//            	{
+//            		for (u = 0; u < 8; u += 4)
+//            		{
+//						in_xmm1 = _mm_load_ps(pom + u);
+//						in_xmm3 = _mm_load_ps(pom2 + u);
+//						in_xmm1 = _mm_div_ps(in_xmm1, in_xmm3);
+//						in_xmm1 = _mm_sub_ps(cos_xmm2, in_xmm1);
+//						*((__m64*)(out_ptr + u)) = _mm_cvtps_pi16(in_xmm1);
+//            		}
+//            		pom += 8;
+//            		pom2 += 8;
+//            		out_ptr += width;
+//            	}
             }
 			else
 			{
@@ -593,27 +601,29 @@ int main(int argc, char **argv)
 
     /* Encode input frames */
     int numframes = 0;;
-    while(!feof(infile))
+    image = malloc(sizeof(yuv_t));
+    if (image)
     {
-        image = read_yuv(infile);
+        posix_memalign((void **)&(image->Y), 16, width*height);
+        posix_memalign((void **)&(image->U), 16, width*height/4);
+        posix_memalign((void **)&(image->V), 16, width*height/4);
+        while(!feof(infile))
+        {
+            read_yuv(infile, image);
 
-        if (!image) {
-            break;
+            printf("Encoding frame %d, ", numframes);
+            encode(image);
+
+            printf("Done!\n");
+
+            ++numframes;
+            if (limit_numframes && numframes >= limit_numframes)
+                break;
         }
-
-        printf("Encoding frame %d, ", numframes);
-        encode(image);
-
         free(image->Y);
-        free(image->U);
-        free(image->V);
-        free(image);
-
-        printf("Done!\n");
-
-        ++numframes;
-        if (limit_numframes && numframes >= limit_numframes)
-            break;
+    	free(image->U);
+    	free(image->V);
+    	free(image);
     }
 
     fclose(outfile);
