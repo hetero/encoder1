@@ -110,29 +110,14 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
             
             uint8_t *in_ptr = &in_data[y*width + x];
 			__m128 c[16];
-			c[0] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[1] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
-			in_ptr += width;
-			c[2] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[3] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
-			in_ptr += width;
-			c[4] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[5] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
-			in_ptr += width;
-			c[6] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[7] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
-			in_ptr += width;
-			c[8] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[9] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
-			in_ptr += width;
-			c[10] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[11] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
-			in_ptr += width;
-			c[12] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[13] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
-			in_ptr += width;
-			c[14] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-			c[15] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
+			for (i = 0; i < 16; i += 2)
+			{
+				c[i] = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+				c[i] = _mm_sub_ps(c[i], M128);
+				c[i + 1] = _mm_cvtpu8_ps(*((__m64 *) (in_ptr + 4)));
+				c[i + 1] = _mm_sub_ps(c[i + 1], M128);
+				in_ptr += width;
+			}
 
             //Loop through all elements of the block
             for(v = 0; v < 8; ++v)
@@ -157,8 +142,7 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                             {
                                 cos_4float = _mm_load_ps(cos_ptr);
                                 
-                                coeff = _mm_sub_ps(c[gr], M128);
-                                coeff = _mm_dp_ps(coeff, cos_4float, 0xF1);
+                                coeff = _mm_dp_ps(c[gr], cos_4float, 0xF1);
                                 res = _mm_add_ss(res, coeff);
 //                                _mm_store_ss(table, coeff);
 
