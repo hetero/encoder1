@@ -6,8 +6,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <assert.h>
-#include <xmmintrin.h>
-#include <smmintrin.h>
+#include <x86intrin.h>
 
 #include "mjpeg_encoder.h"
 
@@ -142,14 +141,16 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                 {
                     /* Compute the DCT */
                     float dct = 0;
+                    __m128 cos_4float, coeff, res;
+					res = _mm_setzero_ps();
                     
                     /* main case */
                     if (ii == 8 && jj == 8) 
                     {
                         float *cos_ptr = &cos_table[512*u + 64*v];
-                        __m128 cos_4float, coeff;
                         int gr = 0;
 
+                        // 16 times
                         for(j = 0; j < 8; ++j)
                         {
                             for(i = 0; i < 8; i += 4)
@@ -158,14 +159,20 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                                 
                                 coeff = _mm_sub_ps(c[gr], M128);
                                 coeff = _mm_dp_ps(coeff, cos_4float, 0xF1);
-                                _mm_store_ss(table, coeff);
-                                
-                                dct += table[0];
+                                res = _mm_add_ss(res, coeff);
+//                                _mm_store_ss(table, coeff);
+
+//                                dct += table[0];
                                 
                                 cos_ptr += 4;
                                 gr++;
                             }
                         }
+                        coeff = _mm_load_ss(&(quantization[v*8+u]));
+                        res = _mm_div_ss(res, coeff);
+
+                        _mm_store_ss(table, res);
+                        dct = table[0] / (4.0f);
                     }
                     /* border case */
                     else {
@@ -175,16 +182,20 @@ static void dct_quantize(uint8_t *in_data, uint32_t width, uint32_t height,
                                 int coeff = in_data[(y+j)*width+(x+i)] - 128;
                                 dct += coeff * cos_table[512*u + 64*v + 8*j + i];
                             }
+                        dct /= (quantization[v*8+u] * 4.0f);
                     }
 
                     float a1 = !u ? ISQRT2 : 1.0f;
                     float a2 = !v ? ISQRT2 : 1.0f;
 
                     /* Scale according to normalizing function */
-                    dct *= a1*a2/4.0f;
+//                    dct *= a1*a2/4.0f;
+                    dct *= a1*a2;
 
                     /* Quantize */
-                    *out_ptr = (int16_t)(0.5f + dct / (quantization[v*8+u]));
+                    // TODO division to xmm
+//                    *out_ptr = (int16_t)(0.5f + dct / (quantization[v*8+u]));
+                    *out_ptr = (int16_t)(0.5f + dct);
                     out_ptr++;
                 }
                 out_ptr += width - 8;
