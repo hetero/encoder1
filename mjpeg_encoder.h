@@ -26,6 +26,9 @@ struct yuv
   uint8_t *Y;
   uint8_t *U;
   uint8_t *V;
+  float *Yf;
+  float *Uf;
+  float *Vf;
 };
 
 struct dct
