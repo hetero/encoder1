@@ -153,12 +153,8 @@ This time profiling showed that line:
 *out_ptr = (int16_t)(0.5f + tmp[v * 8 + u] / (quantization[v*8+u]));
 \end{lstlisting}
 It turned out that this division can be done once in the beginning
-with each computated $\cos$ value.
-
-Next thing was change in frequency of using \texttt{malloc()} function,
-we can of course call it once per program run, not once per frame.
-
-This optimizations improved our code by factor 1.10, from 83.6s to 76.0s.
+with each computated $\cos$ value. This optimalization improved
+our code by factor 1.10, from 83.6s to 76.0s.
 
 
 \section{Opt 12: Zmiana koncepcji?}
