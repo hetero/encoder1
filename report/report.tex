@@ -3,6 +3,7 @@
 \usepackage{graphicx}
 \usepackage{verbatim}
 \usepackage{listings}
+\usepackage{mathtools}
 \lstset{language=C, frame=single}
 
 \topmargin=-15mm
@@ -18,23 +19,21 @@
 \maketitle
 
 \section{Introduction}
-TODO
-
-\section{Optimalizations}
+We have implemented 8 optimizations of \texttt{mjpeg\_encoder} program.
+In the fig. \ref{times_plot} we can see time of encoding the movie\footnote{All time results used in this report are times of encoding \texttt{tractor.yuv} on \emph{Clinton} machine.} after each optimization.
+All the optimizations together have reduced this time by factor 73.4, from 5475\,s to 74.6\,s.
 
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=0.7\textwidth]{img/times.png}
-	\caption{Time of encoding \texttt{tractor.yuv} movie. After 12 optimalizations this time was reduced from 5475s to 74.6s}
+	\caption{Time of encoding \texttt{tractor.yuv} movie. After 8 optimizations this time was reduced from 5475\,s to 74.6\,s}
 	\label{times_plot}
 \end{figure}
 
-We have implemented 12 optimalizations of \texttt{mjpeg\_encoder} program.
-In the fig. \ref{times_plot} we can see time of encoding the movie\footnote{All times used in this report are times of encoding \texttt{tractor.yuv} on \emph{Clinton} machine.} after each optimalization.
-All optimalizations together have reduced this time by factor 73.4, from 5475s to 74.6s. 
 
+\section{Optimalizations}
 \subsection{Opt 1: Cosine array}
-We recognized that first bottleneck (83.7\% of samples) is this line:
+We recognized that first bottleneck (83.7\% of samples) is in this line:
 
 \begin{lstlisting}
 dct += coeff * (float) (cos((2*i+1)*u*PI/16.0f) 
@@ -51,7 +50,7 @@ Thus, considered line changed to:
 dct += coeff * cos_table[i][u] * cos_table[j][v];
 \end{lstlisting}
 
-Optimalization described above improved \texttt{mjpeg\_encoder} by factor 8.3, from 5475s to 657.8s.
+Optimalization described above improved \texttt{mjpeg\_encoder} by factor 8.3, from 5475\,s to 657.8\,s.
 
 \subsection{Opt 2: Products of cosines array}
 Next observation: since there is only 64 possible values of $\cos$ function,
@@ -64,10 +63,10 @@ Now considered line changed to:
 \begin{lstlisting}
 dct += coeff * cos_table[i][u][j][v];
 \end{lstlisting}
-This optimalization improved program speed by factor 1.34, from 657.8s to 490.1s.
+This optimization improved program speed by factor 1.34, from 657.8\,s to 490.1\,s.
 
-\subsection{Opt 5: SSE multiplying}
-After first two optimalizations the bottleneck was the floating-point addition and multiplication in following lines:
+\subsection{Opt 3: SSE multiplying}
+After first two optimizations the bottleneck was the floating-point addition and multiplication in following lines:
 \begin{lstlisting}
 float coeff = in_data[(y+j)*width+(x+i)] - 128.0f;
 dct += coeff * cos_table[i][u][j][v];
@@ -86,19 +85,21 @@ dct += table[0] + table[1] + table[2] + table[3];
 cos_ptr += 4;
 in_ptr += 4;
 \end{lstlisting}
-Therefore we were doing 4 substractions at once and 4 multipications at once.
-This change improved the code 3 times, from 490s to 164s.
+Therefore we are doing 4 substractions at once and 4 multipications at once now.
+This change improved the code 3 times, from 490\,s to 164\,s.
 
 The problem was that \texttt{in\_data} was the type of \texttt{uint8\_t}
 and was multiplied by \texttt{float} cosine.
-At first we implemented a trick with casting \texttt{uint8\_t} to (m64) TODO:
-
-TODO
-
+At first we implemented a trick with casting \texttt{uint8\_t} pointer
+to \texttt{\_\_m64} pointer and then converting it to float:
+\begin{lstlisting}
+__m128 coeff = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+\end{lstlisting}
 Unfortunately, this trick didn't work on \emph{Clinton} machine, 
-so we decided to change the type of \texttt{in\_data} to \texttt{float}.
+since \texttt{\_\_m64} type is no longer supported on 64-bit machines.
+Therefore we decided to change the type of \texttt{in\_data} to \texttt{float}.
 
-\section{Opt 6: Multiplication and addition -> dot product}
+\subsection{Opt 4: Dot product}
 The next bottleneck was an addition of 4 \texttt{float}s.
 This \texttt{float}s were results of multiplication 4 consecutive elements
 of \texttt{in\_data} array and cosine array.
@@ -114,9 +115,9 @@ coeff = _mm_dp_ps(coeff, cos_4float, 0xf1);
 _mm_store_ss(table, coeff);
 dct += table[0];
 \end{lstlisting}
-This optimalization improved code by factor 1.6 to 103s total time.
+This optimization improved code by factor 1.6 to 103\,s total time.
 
-\section{Opt 7: Load operation moved out from a loop}
+\subsection{Opt 5: Load operation moved out from a loop}
 We recognized that \texttt{\_mm\_load\_ps} operation of input data 
 is performed $64 \cdot 16$ times for each block.
 \begin{lstlisting}
@@ -132,9 +133,10 @@ for (i = 0; i < 16; i += 2) {
     in_ptr += width;
 }
 \end{lstlisting}
-This optimalization improved program only by factor 1.03.
+This optimization improved program only by factor 1.03.
 
-\section{Opt 8 and 9: \texttt{float()} function removed and \texttt{uint8\_t quantization} -> \texttt{float quantization}}
+\subsection{Opt 6: \texttt{floor()} function removed. 
+\texttt{uint8\_t quantization} changed to \texttt{float quantization}}
 The next bottleneck was in the following line:
 \begin{lstlisting}
 out_data[(y+v)*width+(x+u)] = 
@@ -147,15 +149,15 @@ Since \texttt{quantization} is a constant array $8 \times 8$ we can store it
 in memory as a \texttt{float} array and avoid this casting each time.
 These two changes improved our encoder by factor 1.18.
 
-\section{Opt 13: Cos + malloc}
+\subsection{Opt 7: Cos + malloc}
 TODO: Paweł
 
-This optimalization improved our code by factor 1.10, from 83.6s to 76.0s.
+This optimization improved our code by factor 1.10, from 83.6\,s to 76.0\,s.
 
 
-\section{Opt 12: Zmiana koncepcji?}
+\subsection{Opt 8: Zmiana koncepcji?}
 TODO: Paweł
 
-This optimalization improved our code by factor 1.02, from 76.0s to 74.5s.
+This optimization improved our code by factor 1.02, from 76.0\,s to 74.5\,s.
 
 \end{document}
