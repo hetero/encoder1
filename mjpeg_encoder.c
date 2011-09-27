@@ -33,34 +33,29 @@ extern int optind;
 extern char *optarg;
 
 /* cosines memorizing */
-static float cos_table[3 * 4096] __attribute__((aligned(16)));
+static float cos_table[4096 * 3] __attribute__((aligned(16)));
 
 static void calc_cos_table() {
 	int u, v, j, i;
-	for (u = 0; u < 8; u++)
-		for (v = 0; v < 8; v++)
-			for (j = 0; j < 8; j++)
-				for (i = 0; i < 8; i++) {
+	for (i = 0; i < 8; i++)
+		for (u = 0; u < 8; u++)
+			for (v = 0; v < 8; v++)
+				for (j = 0; j < 8; j++) {
 					float q1 = Fyquanttbl[v * 8 + u];
 					float q2 = Fuquanttbl[v * 8 + u];
 					float q3 = Fvquanttbl[v * 8 + u];
-
-					float tmp_cos = cos((2 * i + 1) * u * PI / 16.0f)
-							* cos((2 * j + 1) * v * PI / 16.0f);
-
+					float tmp_cos = cos((2 * i + 1) * v * PI / 16.0f)
+							* cos((2 * j + 1) * u * PI / 16.0f);
 					float a1 = !u ? ISQRT2 : 1.0f;
 					float a2 = !v ? ISQRT2 : 1.0f;
-					cos_table[512 * u + 64 * v + 8 * j + i] = tmp_cos * a1 * a2
-							/ (q1 * 4.0f);
-					cos_table[4096 + 512 * u + 64 * v + 8 * j + i] = tmp_cos
-							* a1 * a2 / (q2 * 4.0f);
-					cos_table[2 * 4096 + 512 * u + 64 * v + 8 * j + i] = tmp_cos
-							* a1 * a2 / (q3 * 4.0f);
+					cos_table[512*i + 64*v + 8*u + j] = tmp_cos * a1 * a2 / (q1 * 4.0f);
+					cos_table[4096 + 512*i + 64*v + 8*u + j] = tmp_cos * a1 * a2 / (q2 * 4.0f);
+					cos_table[2 * 4096 + 512*i + 64*v + 8*u + j] = tmp_cos * a1 * a2 / (q3 * 4.0f);
 				}
 }
 
 /* Read YUV frames */
-static void read_yuv(FILE *file, yuv_t *image) {
+void read_yuv(FILE *file, yuv_t *image) {
 	size_t len = 0;
 	int i;
 
@@ -70,7 +65,7 @@ static void read_yuv(FILE *file, yuv_t *image) {
 		perror("ferror");
 		exit(EXIT_FAILURE);
 	}
-	for (i = 0; i < width * height; ++i)
+	for (i = 0; i < width*height; ++i)
 		image->Yf[i] = image->Y[i];
 
 	/* Read U */
@@ -79,7 +74,7 @@ static void read_yuv(FILE *file, yuv_t *image) {
 		perror("ferror");
 		exit(EXIT_FAILURE);
 	}
-	for (i = 0; i < width * height / 4; ++i)
+	for (i = 0; i < width*height/4; ++i)
 		image->Uf[i] = image->U[i];
 
 	/* Read V */
@@ -88,20 +83,25 @@ static void read_yuv(FILE *file, yuv_t *image) {
 		perror("ferror");
 		exit(EXIT_FAILURE);
 	}
-	for (i = 0; i < width * height / 4; ++i)
+	for (i = 0; i < width*height/4; ++i)
 		image->Vf[i] = image->V[i];
 
 	if (len != width * height * 1.5) {
 		printf("Reached end of file.\n");
 	}
+
 }
 
 static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
-		int16_t *out_data, uint32_t padwidth, uint32_t padheight, int id_quant) {
-	int y, x, u, v, j, i;
-	const __m128 c128_xmm = _mm_set1_ps(128.0);
-	float table[4] __attribute__((aligned(16)));
+        int16_t *out_data, uint32_t padwidth,
+        uint32_t padheight, uint8_t id_quant)
+{
+	int y, x, u, v, i;
+	const __m128 f128_xmm0 = _mm_set1_ps(128);
+	__m128 in_xmm1, cos_xmm2, in_xmm3, cos_xmm4;
 	int16_t *out_ptr;
+	float tmp[64] __attribute__((aligned(16)));
+	float table[4] __attribute__((aligned(16)));
 
 	/* Perform the DCT and quantization */
 	for (y = 0; y < height; y += 8) {
@@ -111,62 +111,65 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
 		for (x = 0; x < width; x += 8) {
 			int ii = width - x;
 			ii = MIN(ii, 8); // For the border-pixels, we might have a part of an 8x8 block
-			out_ptr = &out_data[y * width + x];
 
 			float *in_ptr = &in_data[y * width + x];
-			__m128 in_xmm[16];
-			for (i = 0; i < 16; i += 2) {
-				in_xmm[i] = _mm_load_ps(in_ptr);
-				in_xmm[i + 1] = _mm_load_ps(in_ptr + 4);
-				in_ptr += width;
-			}
+			out_ptr = &out_data[y * width + x];
+			if (ii == 8 && jj == 8) {
+				for (i = 0; i < 64; ++i) {
+					tmp[i] = 0.0f;
+				}
+				//Loop through all elements of the in block, vector by vector
+				for (i = 0; i < 8; ++i) {
+					in_xmm1 = _mm_load_ps(in_ptr);
+					in_xmm1 = _mm_sub_ps(in_xmm1, f128_xmm0);
+					in_xmm3 = _mm_load_ps(in_ptr + 4);
+					in_xmm3 = _mm_sub_ps(in_xmm3, f128_xmm0);
+					float *cos_ptr = &cos_table[id_quant * 4096 + 512 * i];
+					//Loop through all elements of the out block
+					for (v = 0; v < 8; ++v) {
+						for (u = 0; u < 8; ++u) {
+							cos_xmm2 = _mm_load_ps(cos_ptr + v * 64 + u * 8);
+							cos_xmm2 = _mm_dp_ps(in_xmm1, cos_xmm2, 0xF1);
+							cos_xmm4 = _mm_load_ps(
+									cos_ptr + v * 64 + u * 8 + 4);
+							cos_xmm4 = _mm_dp_ps(in_xmm3, cos_xmm4, 0xF1);
+							cos_xmm4 = _mm_add_ss(cos_xmm4, cos_xmm2);
+							_mm_store_ss(table, cos_xmm4);
+							tmp[v * 8 + u] += table[0];
+						}
 
-			//Loop through all elements of the block
-			for (v = 0; v < 8; ++v) {
-				for (u = 0; u < 8; ++u) {
-					/* Compute the DCT */
-					float dct = 0;
-
-					/* main case */
-					if (ii == 8 && jj == 8) {
-						float *cos_ptr = &cos_table[id_quant * 4096 + 512 * u
-								+ 64 * v];
-						__m128 cos_xmm, coeff_xmm;
-						int n_in_vec = 0;
-
-						for (j = 0; j < 8; ++j) {
-							for (i = 0; i < 8; i += 4) {
-								cos_xmm = _mm_load_ps(cos_ptr);
-
-								coeff_xmm = _mm_sub_ps(in_xmm[n_in_vec],
-										c128_xmm);
-								coeff_xmm = _mm_dp_ps(coeff_xmm, cos_xmm, 0xF1);
-								_mm_store_ss(table, coeff_xmm);
-
-								dct += table[0];
-
-								cos_ptr += 4;
-								n_in_vec++;
+					}
+					in_ptr += width;
+				}
+				// TODO a moze out_ptr powinno byc float?
+				for (v = 0; v < 8; ++v) {
+					for (u = 0; u < 8; ++u) {
+						*out_ptr = (int16_t) (0.5f + tmp[v * 8 + u]);
+						out_ptr++;
+					}
+					out_ptr += width - 8;
+				}
+			} else {
+				int j;
+				float dct, coeff;
+				for(v = 0; v << ii; ++v)
+				{
+					for (u = 0; u < jj; ++u)
+					{
+						dct = 0;
+						for (i = 0; i < ii; ++i)
+						{
+							for (j = 0; j < jj; ++j)
+							{
+								coeff = in_data[(y + i) * width + (x + j)] - 128;
+								dct += coeff * cos_table[id_quant * 4096 + 512 * i + 64 * v + 8 * u + j];
 							}
 						}
+						*out_ptr = (int16_t) (0.5f + dct);
+						out_ptr++;
 					}
-					/* border case */
-					else {
-						for (j = 0; j < jj; ++j)
-							for (i = 0; i < ii; ++i) {
-								int coeff = in_data[(y + j) * width + (x + i)]
-										- 128;
-								dct +=
-										coeff
-												* cos_table[512 * u + 64 * v
-														+ 8 * j + i];
-							}
-					}
-
-					*out_ptr = (int16_t) (0.5f + dct);
-					out_ptr++;
+					out_ptr += width - jj;
 				}
-				out_ptr += width - 8;
 			}
 		}
 	}
@@ -452,11 +455,9 @@ static void encode(yuv_t *image) {
 	out->Vdct = malloc(vph * vpw * (sizeof(*out->Vdct)));
 
 	/* DCT and Quantization */
-	dct_quantize(image->Yf, width, height, out->Ydct, ypw, yph, 0);
-	dct_quantize(image->Uf,
-			(width * UX / YX), (height*UY/YY), out->Udct, upw, uph, 1);
-	dct_quantize(image->Vf,
-			(width * VX / YX), (height*VY/YY), out->Vdct, vpw, vph, 2);
+    dct_quantize(image->Yf, width, height, out->Ydct, ypw, yph, 0);
+    dct_quantize(image->Uf, (width*UX/YX), (height*UY/YY), out->Udct, upw, uph, 1);
+    dct_quantize(image->Vf, (width*VX/YX), (height*VY/YY), out->Vdct, vpw, vph, 2);
 
 	/* Write headers */
 
@@ -563,23 +564,17 @@ int main(int argc, char **argv) {
 
 	/* Encode input frames */
 	int numframes = 0;
+	;
 	image = malloc(sizeof(yuv_t));
 	if (image) {
 		posix_memalign((void **) &(image->Y), 16, width * height);
 		posix_memalign((void **) &(image->U), 16, width * height / 4);
 		posix_memalign((void **) &(image->V), 16, width * height / 4);
-		posix_memalign((void **) &(image->Yf), 16,
-				width * height * sizeof(float));
-		posix_memalign((void **) &(image->Uf), 16,
-				width * height * sizeof(float) / 4);
-		posix_memalign((void **) &(image->Vf), 16,
-				width * height * sizeof(float) / 4);
+		posix_memalign((void **) &(image->Yf), 16, width * height * sizeof(float));
+		posix_memalign((void **) &(image->Uf), 16, width * height * sizeof(float) / 4);
+		posix_memalign((void **) &(image->Vf), 16, width * height * sizeof(float) / 4);
 		while (!feof(infile)) {
 			read_yuv(infile, image);
-
-			if (!image) {
-				break;
-			}
 
 			printf("Encoding frame %d, ", numframes);
 			encode(image);
@@ -590,7 +585,6 @@ int main(int argc, char **argv) {
 			if (limit_numframes && numframes >= limit_numframes)
 				break;
 		}
-
 		free(image->Y);
 		free(image->U);
 		free(image->V);

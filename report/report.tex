@@ -149,15 +149,26 @@ Since \texttt{quantization} is a constant array $8 \times 8$ we can store it
 in memory as a \texttt{float} array and avoid this casting each time.
 These two changes improved our encoder by factor 1.18.
 
-\subsection{Opt 7: Cos + malloc}
-TODO: Paweł
+\section{Opt 13: Cos + malloc}
+This time profiling showed that line:
+\begin{lstlisting}
+*out_ptr = (int16_t)(0.5f + tmp[v * 8 + u] / (quantization[v*8+u]));
+\end{lstlisting}
+It turned out that this division can be done once in the beginning
+with each computated $\cos$ value. This optimalization improved
+our code by factor 1.10, from 83.6s to 76.0s.
 
-This optimization improved our code by factor 1.10, from 83.6\,s to 76.0\,s.
 
-
-\subsection{Opt 8: Zmiana koncepcji?}
-TODO: Paweł
-
-This optimization improved our code by factor 1.02, from 76.0\,s to 74.5\,s.
+\section{Opt 12: Zmiana koncepcji?}
+Until now we were using more than 16 variables of \_\_m12 type8,
+so there probably were problems with switching data in registers.
+We changed completely order of computations. From now on we compute
+firstly all things related to first row of input data and then go
+to next row of input data. It forces us to keep out data in local
+variable and sum up data from each input row. It allows us to use
+about 5 variables of \_\_m128 type, so there is no problem with
+switching data in XMM registers any more. This optimalization
+improved our code by factor 1.02, from 76.0s to 74.5s. This shows
+that compiler makes really good optimizations.
 
 \end{document}
