@@ -33,7 +33,7 @@ static uint32_t bit_buffer_width = 0;
 extern int optind;
 extern char *optarg;
 
-static uint8_t *byte_array;
+uint8_t *byte_array;
 
 /* cosines memorizing */
 static float cos_table[4096] __attribute__((aligned(16)));
@@ -54,7 +54,7 @@ static yuv_t* read_yuv(FILE *file)
     size_t len = 0;
     yuv_t *image = malloc(sizeof(yuv_t));
     int i;
-
+    
     /* Read Y' */
     image->Y = malloc(width*height*sizeof(float));
     len += fread(byte_array, 1, width*height, file);
@@ -66,37 +66,37 @@ static yuv_t* read_yuv(FILE *file)
         perror("ferror");
         exit(EXIT_FAILURE);
     }
-
+    
     /* Read U */
     image->U = malloc(width*height*sizeof(float));
     len += fread(byte_array, 1, (width*height)/4, file);
     for (i = 0; i < width*height/4; ++i)
-        image->U[i] = (float) byte_array[i];
+        image->U[i] = byte_array[i];
     
     if(ferror(file))
     {
         perror("ferror");
         exit(EXIT_FAILURE);
     }
-
+    
     /* Read V */
     image->V = malloc(width*height*sizeof(float));
     len += fread(byte_array, 1, (width*height)/4, file);
     for (i = 0; i < width*height/4; ++i)
-        image->V[i] = (float) byte_array[i];
+        image->V[i] = byte_array[i];
     
     if(ferror(file))
     {
         perror("ferror");
         exit(EXIT_FAILURE);
     }
-
+    
     if(len != width*height*1.5)
     {
         printf("Reached end of file.\n");
         return NULL;
     }
-
+    
     return image;
 }
 
@@ -118,6 +118,32 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
             int ii = width - x;
             ii = MIN(ii, 8); // For the border-pixels, we might have a part of an 8x8 block
 
+            float *in_ptr = &in_data[y*width + x];
+			__m128 c[16];
+            c[0] = _mm_load_ps(in_ptr);
+            c[1] = _mm_load_ps(in_ptr + 4);
+            in_ptr += width;
+            c[2] = _mm_load_ps(in_ptr);
+            c[3] = _mm_load_ps(in_ptr + 4);
+            in_ptr += width;
+            c[4] = _mm_load_ps(in_ptr);
+            c[5] = _mm_load_ps(in_ptr + 4);
+            in_ptr += width;
+            c[6] = _mm_load_ps(in_ptr);
+            c[7] = _mm_load_ps(in_ptr + 4);
+            in_ptr += width;
+            c[8] = _mm_load_ps(in_ptr);
+            c[9] = _mm_load_ps(in_ptr + 4);
+            in_ptr += width;
+            c[10] = _mm_load_ps(in_ptr);
+            c[11] = _mm_load_ps(in_ptr + 4);
+            in_ptr += width;
+            c[12] = _mm_load_ps(in_ptr);
+            c[13] = _mm_load_ps(in_ptr + 4);
+            in_ptr += width;
+            c[14] = _mm_load_ps(in_ptr);
+            c[15] = _mm_load_ps(in_ptr + 4);
+
             //Loop through all elements of the block
             for(u = 0; u < 8; ++u)
             {
@@ -130,27 +156,24 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
                     if (ii == 8 && jj == 8) 
                     {
                         float *cos_ptr = &cos_table[512*u + 64*v];
-                        float *in_ptr = &in_data[y*width + x];
-                        
+                        __m128 cos_4float, coeff;
+                        int gr = 0;
+
                         for(j = 0; j < 8; ++j)
                         {
                             for(i = 0; i < 8; i += 4)
                             {
-                                //__m128 coeff = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
-                                __m128 coeff = _mm_load_ps(in_ptr);
+                                cos_4float = _mm_load_ps(cos_ptr);
                                 
-                                __m128 cos_4float = _mm_load_ps(cos_ptr);
-                                
-                                coeff = _mm_sub_ps(coeff, M128);
-                                coeff = _mm_dp_ps(coeff, cos_4float, 0xf1);
+                                coeff = _mm_sub_ps(c[gr], M128);
+                                coeff = _mm_dp_ps(coeff, cos_4float, 0xF1);
                                 _mm_store_ss(table, coeff);
                                 
                                 dct += table[0];
                                 
                                 cos_ptr += 4;
-                                in_ptr += 4;
+                                gr++;
                             }
-                            in_ptr += width - 8;
                         }
                     }
                     /* border case */
@@ -556,9 +579,9 @@ int main(int argc, char **argv)
             break;
         }
     }
-    
+
     byte_array = malloc(width*height);
-    
+
     if(optind >= argc)
     {
         fprintf(stderr, "Error getting program options, try --help.\n");
