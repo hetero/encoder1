@@ -71,7 +71,7 @@ static yuv_t* read_yuv(FILE *file)
     image->U = malloc(width*height*sizeof(float));
     len += fread(byte_array, 1, (width*height)/4, file);
     for (i = 0; i < width*height/4; ++i)
-        image->U[i] = byte_array[i];
+        image->U[i] = (float) byte_array[i];
     
     if(ferror(file))
     {
@@ -83,7 +83,7 @@ static yuv_t* read_yuv(FILE *file)
     image->V = malloc(width*height*sizeof(float));
     len += fread(byte_array, 1, (width*height)/4, file);
     for (i = 0; i < width*height/4; ++i)
-        image->V[i] = byte_array[i];
+        image->V[i] = (float) byte_array[i];
     
     if(ferror(file))
     {
@@ -102,11 +102,10 @@ static yuv_t* read_yuv(FILE *file)
 
 static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
         int16_t *out_data, uint32_t padwidth,
-        uint32_t padheight, float *quantization)
+        uint32_t padheight, uint8_t *quantization)
 {
     int y,x,u,v,j,i;
     const __m128 M128 = _mm_set1_ps(128);
-    int16_t *out_ptr;
     
     /* Perform the DCT and quantization */
     for(y = 0; y < height; y += 8)
@@ -118,38 +117,11 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
         {
             int ii = width - x;
             ii = MIN(ii, 8); // For the border-pixels, we might have a part of an 8x8 block
-            out_ptr = &out_data[y * width + x];
-            
-            float *in_ptr = &in_data[y*width + x];
-			__m128 c[16];
-			c[0] = _mm_load_ps(in_ptr);
-            c[1] = _mm_load_ps(in_ptr + 4);
-			in_ptr += width;
-            c[2] = _mm_load_ps(in_ptr);
-            c[3] = _mm_load_ps(in_ptr + 4);
-			in_ptr += width;
-            c[4] = _mm_load_ps(in_ptr);
-            c[5] = _mm_load_ps(in_ptr + 4);
-			in_ptr += width;
-            c[6] = _mm_load_ps(in_ptr);
-            c[7] = _mm_load_ps(in_ptr + 4);
-			in_ptr += width;
-            c[8] = _mm_load_ps(in_ptr);
-            c[9] = _mm_load_ps(in_ptr + 4);
-			in_ptr += width;
-            c[10] = _mm_load_ps(in_ptr);
-            c[11] = _mm_load_ps(in_ptr + 4);
-			in_ptr += width;
-            c[12] = _mm_load_ps(in_ptr);
-            c[13] = _mm_load_ps(in_ptr + 4);
-			in_ptr += width;
-            c[14] = _mm_load_ps(in_ptr);
-            c[15] = _mm_load_ps(in_ptr + 4);
 
             //Loop through all elements of the block
-            for(v = 0; v < 8; ++v)
+            for(u = 0; u < 8; ++u)
             {
-                for(u = 0; u < 8; ++u)
+                for(v = 0; v < 8; ++v)
                 {
                     /* Compute the DCT */
                     float dct = 0;
@@ -158,24 +130,27 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
                     if (ii == 8 && jj == 8) 
                     {
                         float *cos_ptr = &cos_table[512*u + 64*v];
-                        __m128 cos_4float, coeff;
-                        int gr = 0;
-
+                        float *in_ptr = &in_data[y*width + x];
+                        
                         for(j = 0; j < 8; ++j)
                         {
                             for(i = 0; i < 8; i += 4)
                             {
-                                cos_4float = _mm_load_ps(cos_ptr);
+                                //__m128 coeff = _mm_cvtpu8_ps(*((__m64 *) in_ptr));
+                                __m128 coeff = _mm_load_ps(in_ptr);
                                 
-                                coeff = _mm_sub_ps(c[gr], M128);
-                                coeff = _mm_dp_ps(coeff, cos_4float, 0xF1);
+                                __m128 cos_4float = _mm_load_ps(cos_ptr);
+                                
+                                coeff = _mm_sub_ps(coeff, M128);
+                                coeff = _mm_dp_ps(coeff, cos_4float, 0xf1);
                                 _mm_store_ss(table, coeff);
                                 
                                 dct += table[0];
                                 
                                 cos_ptr += 4;
-                                gr++;
+                                in_ptr += 4;
                             }
+                            in_ptr += width - 8;
                         }
                     }
                     /* border case */
@@ -195,10 +170,8 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
                     dct *= a1*a2/4.0f;
 
                     /* Quantize */
-                    *out_ptr = (int16_t)(0.5f + dct / (quantization[v*8+u]));
-                    out_ptr++;
+                    out_data[(y+v)*width+(x+u)] = (int16_t)(floor(0.5f + dct / (float)(quantization[v*8+u])));
                 }
-                out_ptr += width - 8;
             }
         }
     }
@@ -509,9 +482,9 @@ static void encode(yuv_t *image)
     out->Vdct = malloc(vph*vpw*(sizeof(*out->Vdct)));
 
     /* DCT and Quantization */
-    dct_quantize(image->Y, width, height, out->Ydct, ypw, yph, Fyquanttbl);
-    dct_quantize(image->U, (width*UX/YX), (height*UY/YY), out->Udct, upw, uph, Fuquanttbl);
-    dct_quantize(image->V, (width*VX/YX), (height*VY/YY), out->Vdct, vpw, vph, Fvquanttbl);
+    dct_quantize(image->Y, width, height, out->Ydct, ypw, yph, yquanttbl);
+    dct_quantize(image->U, (width*UX/YX), (height*UY/YY), out->Udct, upw, uph, uquanttbl);
+    dct_quantize(image->V, (width*VX/YX), (height*VY/YY), out->Vdct, vpw, vph, vquanttbl);
 
     /* Write headers */
 
@@ -583,9 +556,9 @@ int main(int argc, char **argv)
             break;
         }
     }
-
+    
     byte_array = malloc(width*height);
-
+    
     if(optind >= argc)
     {
         fprintf(stderr, "Error getting program options, try --help.\n");
