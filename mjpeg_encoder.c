@@ -141,7 +141,6 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
 					}
 					in_ptr += width;
 				}
-				// TODO a moze out_ptr powinno byc float?
 				for (v = 0; v < 8; ++v) {
 					for (u = 0; u < 8; ++u) {
 						*out_ptr = (int16_t) (0.5f + tmp[v * 8 + u]);
@@ -499,6 +498,7 @@ static void print_help() {
 }
 
 int main(int argc, char **argv) {
+	int nothing;
 	calc_cos_table();
 
 	int c;
@@ -564,15 +564,15 @@ int main(int argc, char **argv) {
 
 	/* Encode input frames */
 	int numframes = 0;
-	;
+	
 	image = malloc(sizeof(yuv_t));
 	if (image) {
-		posix_memalign((void **) &(image->Y), 16, width * height);
-		posix_memalign((void **) &(image->U), 16, width * height / 4);
-		posix_memalign((void **) &(image->V), 16, width * height / 4);
-		posix_memalign((void **) &(image->Yf), 16, width * height * sizeof(float));
-		posix_memalign((void **) &(image->Uf), 16, width * height * sizeof(float) / 4);
-		posix_memalign((void **) &(image->Vf), 16, width * height * sizeof(float) / 4);
+		nothing = posix_memalign((void **) &(image->Y), 16, width * height);
+		nothing = posix_memalign((void **) &(image->U), 16, width * height / 4);
+		nothing = posix_memalign((void **) &(image->V), 16, width * height / 4);
+		nothing = posix_memalign((void **) &(image->Yf), 16, width * height * sizeof(float));
+		nothing = posix_memalign((void **) &(image->Uf), 16, width * height * sizeof(float) / 4);
+		nothing = posix_memalign((void **) &(image->Vf), 16, width * height * sizeof(float) / 4);
 		while (!feof(infile)) {
 			read_yuv(infile, image);
 
