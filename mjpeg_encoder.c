@@ -35,6 +35,9 @@ extern char *optarg;
 /* cosines memorizing */
 static float cos_table[4096 * 3] __attribute__((aligned(16)));
 
+static dct_t *out;
+static uint8_t *byte_array;
+
 static void calc_cos_table() {
 	int u, v, j, i;
 	for (i = 0; i < 8; i++)
@@ -60,31 +63,31 @@ void read_yuv(FILE *file, yuv_t *image) {
 	int i;
 
 	/* Read Y' */
-	len += fread(image->Y, 1, width * height, file);
+	len += fread(byte_array, 1, width * height, file);
 	if (ferror(file)) {
 		perror("ferror");
 		exit(EXIT_FAILURE);
 	}
 	for (i = 0; i < width*height; ++i)
-		image->Yf[i] = (image->Y[i] - 128);
+		image->Yf[i] = (byte_array[i] - 128);
 
 	/* Read U */
-	len += fread(image->U, 1, width * height / 4, file);
+	len += fread(byte_array, 1, width * height / 4, file);
 	if (ferror(file)) {
 		perror("ferror");
 		exit(EXIT_FAILURE);
 	}
 	for (i = 0; i < width*height/4; ++i)
-		image->Uf[i] = (image->U[i] - 128);
+		image->Uf[i] = (byte_array[i] - 128);
 
 	/* Read V */
-	len += fread(image->V, 1, width * height / 4, file);
+	len += fread(byte_array, 1, width * height / 4, file);
 	if (ferror(file)) {
 		perror("ferror");
 		exit(EXIT_FAILURE);
 	}
 	for (i = 0; i < width*height/4; ++i)
-		image->Vf[i] = (image->V[i] - 128);
+		image->Vf[i] = (byte_array[i] - 128);
 
 	if (len != width * height * 1.5) {
 		printf("Reached end of file.\n");
@@ -93,14 +96,14 @@ void read_yuv(FILE *file, yuv_t *image) {
 }
 
 static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
-        int16_t *out_data, uint32_t padwidth,
+        float *out_data, uint32_t padwidth,
         uint32_t padheight, uint8_t id_quant)
 {
 	int y, x, u, v, i;
 	//const __m128 f128_xmm0 = _mm_set1_ps(128);
 	__m128 in_xmm1, cos_xmm2, in_xmm3, cos_xmm4;
     __m128 reg[16];
-	int16_t *out_ptr;
+	float *out_ptr;
 	float tmp[64] __attribute__((aligned(16)));
 	//float table[4] __attribute__((aligned(16)));
 
@@ -120,57 +123,29 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
 					tmp[i] = 0.0f;
 				}
 				for (i = 0; i < 16; ++i)
-					reg[i] = _mm_set1_ps(0);
+					reg[i] = _mm_set1_ps(0.5);
 				//Loop through all elements of the in block, vector by vector
 				for (i = 0; i < 8; ++i) {
 					in_xmm1 = _mm_load_ps(in_ptr);
-					//in_xmm1 = _mm_sub_ps(in_xmm1, f128_xmm0);
 					in_xmm3 = _mm_load_ps(in_ptr + 4);
-					//in_xmm3 = _mm_sub_ps(in_xmm3, f128_xmm0);
 					float *cos_ptr = &cos_table[id_quant * 4096 + 512 * i];
 					//Loop through all elements of the out block
 					for (v = 0; v < 8; ++v) {
-						for (u = 0; u < 2; u++) {
-							cos_xmm2 = _mm_load_ps(cos_ptr + v * 64 + (0 + u*4) * 8);
-							cos_xmm2 = _mm_dp_ps(in_xmm1, cos_xmm2, 0xF1);
-							cos_xmm4 = _mm_load_ps(cos_ptr + v * 64 + (0 + u*4) * 8 + 4);
-							cos_xmm4 = _mm_dp_ps(in_xmm3, cos_xmm4, 0xF1);
-							cos_xmm4 = _mm_add_ss(cos_xmm4, cos_xmm2);
-							reg[2 * v + u] = _mm_add_ss(reg[2 * v + u], cos_xmm4);
-							
-							cos_xmm2 = _mm_load_ps(cos_ptr + v * 64 + (1 + u*4) * 8);
-							cos_xmm2 = _mm_dp_ps(in_xmm1, cos_xmm2, 0xF2);
-							cos_xmm4 = _mm_load_ps(cos_ptr + v * 64 + (1 + u*4) * 8 + 4);
-							cos_xmm4 = _mm_dp_ps(in_xmm3, cos_xmm4, 0xF2);
-							cos_xmm4 = _mm_add_ss(cos_xmm4, cos_xmm2);
-							reg[2 * v + u] = _mm_add_ss(reg[2 * v + u], cos_xmm4);
-							
-							cos_xmm2 = _mm_load_ps(cos_ptr + v * 64 + (2 + u*4) * 8);
-							cos_xmm2 = _mm_dp_ps(in_xmm1, cos_xmm2, 0xF4);
-							cos_xmm4 = _mm_load_ps(cos_ptr + v * 64 + (2 + u*4) * 8 + 4);
-							cos_xmm4 = _mm_dp_ps(in_xmm3, cos_xmm4, 0xF4);
-							cos_xmm4 = _mm_add_ss(cos_xmm4, cos_xmm2);
-							reg[2 * v + u] = _mm_add_ss(reg[2 * v + u], cos_xmm4);
-							
-							cos_xmm2 = _mm_load_ps(cos_ptr + v * 64 + (3 + u*4) * 8);
-							cos_xmm2 = _mm_dp_ps(in_xmm1, cos_xmm2, 0xF8);
-							cos_xmm4 = _mm_load_ps(cos_ptr + v * 64 + (3 + u*4) * 8 + 4);
-							cos_xmm4 = _mm_dp_ps(in_xmm3, cos_xmm4, 0xF8);
-							cos_xmm4 = _mm_add_ss(cos_xmm4, cos_xmm2);
-							reg[2 * v + u] = _mm_add_ss(reg[2 * v + u], cos_xmm4);
+						for (u = 0; u < 8; u++) {
+							cos_xmm2 = _mm_load_ps(cos_ptr + v * 64 + u * 8);
+							cos_xmm2 = _mm_dp_ps(in_xmm1, cos_xmm2, 240 + (1 << (u % 4)));
+							cos_xmm4 = _mm_load_ps(cos_ptr + v * 64 + u * 8 + 4);
+							cos_xmm4 = _mm_dp_ps(in_xmm3, cos_xmm4, 240 + (1 << (u % 4)));
+							cos_xmm4 = _mm_add_ps(cos_xmm4, cos_xmm2);
+							reg[2 * v + u / 4] = _mm_add_ps(reg[2 * v + u / 4], cos_xmm4);
 						}
 					}
 					in_ptr += width;
 				}
-				float *tmp_ptr = tmp;
-				for (u = 0; u < 16; u++) {
-					_mm_storeu_ps(tmp_ptr, reg[u]);
-					tmp_ptr += 4;
-				}
 				for (v = 0; v < 8; ++v) {
-					for (u = 0; u < 8; ++u) {
-						*out_ptr = (int16_t) (0.5f + tmp[v * 8 + u]);
-						out_ptr++;
+					for (u = 0; u < 2; u++) {
+						_mm_storeu_ps(out_ptr, reg[2 * v + u]);
+						out_ptr+= 4;
 					}
 					out_ptr += width - 8;
 				}
@@ -190,7 +165,7 @@ static void dct_quantize(float *in_data, uint32_t width, uint32_t height,
 								dct += coeff * cos_table[id_quant * 4096 + 512 * i + 64 * v + 8 * u + j];
 							}
 						}
-						*out_ptr = (int16_t) (0.5f + dct);
+						*out_ptr = (float) (0.5f + dct);
 						out_ptr++;
 					}
 					out_ptr += width - jj;
@@ -376,7 +351,7 @@ static void flush() {
 	bit_buffer_width = 0;
 }
 
-static void write_block(int16_t *in_data, uint32_t width, uint32_t height,
+static void write_block(float *in_data, uint32_t width, uint32_t height,
 		uint32_t uoffset, uint32_t voffset, int16_t *prev_DC, int32_t cc) {
 	uint32_t zigzag, i, j;
 
@@ -428,7 +403,7 @@ static void write_block(int16_t *in_data, uint32_t width, uint32_t height,
 		put_bits(ACVLC[cc][0][0], ACVLC_Size[cc][0][0]);
 }
 
-static void write_interleaved_data_MCU(int16_t *dct, uint32_t wi, uint32_t he,
+static void write_interleaved_data_MCU(float *dct, uint32_t wi, uint32_t he,
 		uint32_t h, uint32_t v, uint32_t x, uint32_t y, int16_t *prev_DC,
 		int32_t cc) {
 	uint32_t i, j, ii, jj;
@@ -461,11 +436,11 @@ static void write_interleaved_data(dct_t *out) {
 	/* Write the MCU's interleaved */
 	for (v = 0; v < vblocks; ++v) {
 		for (u = 0; u < ublocks; ++u) {
-			write_interleaved_data_MCU(out->Ydct, ypw, yph, YX, YY, u, v,
+			write_interleaved_data_MCU(out->Ydctf, ypw, yph, YX, YY, u, v,
 					&prev_DC[0], yhtbl);
-			write_interleaved_data_MCU(out->Udct, upw, uph, UX, UY, u, v,
+			write_interleaved_data_MCU(out->Udctf, upw, uph, UX, UY, u, v,
 					&prev_DC[1], uhtbl);
-			write_interleaved_data_MCU(out->Vdct, vpw, vph, VX, VY, u, v,
+			write_interleaved_data_MCU(out->Vdctf, vpw, vph, VX, VY, u, v,
 					&prev_DC[2], vhtbl);
 		}
 	}
@@ -474,15 +449,10 @@ static void write_interleaved_data(dct_t *out) {
 }
 
 static void encode(yuv_t *image) {
-	dct_t *out = malloc(sizeof(dct_t));
-	out->Ydct = malloc(yph * ypw * (sizeof(*out->Ydct)));
-	out->Udct = malloc(uph * upw * (sizeof(*out->Udct)));
-	out->Vdct = malloc(vph * vpw * (sizeof(*out->Vdct)));
-
 	/* DCT and Quantization */
-    dct_quantize(image->Yf, width, height, out->Ydct, ypw, yph, 0);
-    dct_quantize(image->Uf, (width*UX/YX), (height*UY/YY), out->Udct, upw, uph, 1);
-    dct_quantize(image->Vf, (width*VX/YX), (height*VY/YY), out->Vdct, vpw, vph, 2);
+    dct_quantize(image->Yf, width, height, out->Ydctf, ypw, yph, 0);
+    dct_quantize(image->Uf, (width*UX/YX), (height*UY/YY), out->Udctf, upw, uph, 1);
+    dct_quantize(image->Vf, (width*VX/YX), (height*VY/YY), out->Vdctf, vpw, vph, 2);
 
 	/* Write headers */
 
@@ -502,10 +472,6 @@ static void encode(yuv_t *image) {
 	/* End Of Image */
 	write_EOI();
 
-	free(out->Ydct);
-	free(out->Udct);
-	free(out->Vdct);
-	free(out);
 }
 
 static void print_help() {
@@ -591,14 +557,21 @@ int main(int argc, char **argv) {
 	/* Encode input frames */
 	int numframes = 0;
 	
+	byte_array = malloc(width*height);
+	
 	image = malloc(sizeof(yuv_t));
 	if (image) {
-		nothing = posix_memalign((void **) &(image->Y), 16, width * height);
-		nothing = posix_memalign((void **) &(image->U), 16, width * height / 4);
-		nothing = posix_memalign((void **) &(image->V), 16, width * height / 4);
+		out = malloc(sizeof(dct_t));
+		
 		nothing = posix_memalign((void **) &(image->Yf), 16, width * height * sizeof(float));
 		nothing = posix_memalign((void **) &(image->Uf), 16, width * height * sizeof(float) / 4);
 		nothing = posix_memalign((void **) &(image->Vf), 16, width * height * sizeof(float) / 4);
+		
+		nothing = posix_memalign((void **) &(out->Ydctf), 16, yph * ypw * sizeof(float));
+		nothing = posix_memalign((void **) &(out->Udctf), 16, uph * upw * sizeof(float));
+		nothing = posix_memalign((void **) &(out->Vdctf), 16, vph * vpw * sizeof(float));
+		
+		
 		while (!feof(infile)) {
 			read_yuv(infile, image);
 
@@ -611,13 +584,15 @@ int main(int argc, char **argv) {
 			if (limit_numframes && numframes >= limit_numframes)
 				break;
 		}
-		free(image->Y);
-		free(image->U);
-		free(image->V);
 		free(image->Yf);
 		free(image->Uf);
 		free(image->Vf);
 		free(image);
+		
+		free(out->Ydctf);
+		free(out->Udctf);
+		free(out->Vdctf);
+		free(out);
 	}
 
 	fclose(outfile);
